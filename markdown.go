@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -34,14 +35,8 @@ type SnippetLines struct {
 	End   int
 }
 
-func getSnippetsFromMarkdownFile(path, language string) ([]*Snippet, error) {
-	filename := strings.Split(path, ".")[0]
-	fileString, err := getFileString(path)
-	if err != nil {
-		return nil, err
-	}
-
-	lines := strings.Split(fileString, "\n")
+func getSnippetsFromMarkdownFile(file *File, language string) ([]*Snippet, error) {
+	lines := strings.Split(file.Contents, "\n")
 
 	snippetLinesList := []SnippetLines{}
 	start := 0
@@ -63,14 +58,19 @@ func getSnippetsFromMarkdownFile(path, language string) ([]*Snippet, error) {
 	}
 
 	languageSeparator := fmt.Sprintf("```%v", language)
-	splitFile := strings.Split(fileString, languageSeparator)[1:]
+	splitFile := strings.Split(file.Contents, languageSeparator)[1:]
 
 	javascriptSnippets := []*Snippet{}
 	for index, substr := range splitFile {
+		content := strings.Split(substr, "```")[0]
+
+		content = removeInitialNewline(content)
+		content = replaceTabsWithSpaces(content)
+
 		snippet := &Snippet{
 			Language: language,
-			Content:  strings.Split(substr, "```")[0],
-			Filename: filename,
+			Content:  content,
+			Filename: file.Name,
 			Start:    snippetLinesList[index].Start,
 			End:      snippetLinesList[index].End,
 		}
@@ -80,13 +80,35 @@ func getSnippetsFromMarkdownFile(path, language string) ([]*Snippet, error) {
 	return javascriptSnippets, nil
 }
 
-func replaceSnippetsWithURLs(path string, gistSnippets []*GistSnippet) error {
-	fileString, err := getFileString(path)
-	if err != nil {
-		log.Fatal(err)
-	}
+// UNICODE characters
+const (
+	TAB     = 9
+	SPACE   = 32
+	NEWLINE = 10
+)
 
-	lines := strings.Split(fileString, "\n")
+func removeInitialNewline(content string) string {
+	if content[0] == NEWLINE {
+		content = content[1:]
+	}
+	return content
+}
+
+func replaceTabsWithSpaces(content string) string {
+	var buffer bytes.Buffer
+	for _, c := range content {
+		if c == TAB {
+			buffer.WriteRune(SPACE)
+			buffer.WriteRune(SPACE)
+		} else {
+			buffer.WriteRune(c)
+		}
+	}
+	return buffer.String()
+}
+
+func replaceSnippetsWithURLs(file *File, gistSnippets []*GistSnippet) error {
+	lines := strings.Split(file.Contents, "\n")
 
 	for _, gs := range gistSnippets {
 		lines[gs.Snippet.Start-1] = gs.Gist.GetHTMLURL()
@@ -96,20 +118,27 @@ func replaceSnippetsWithURLs(path string, gistSnippets []*GistSnippet) error {
 	for index, gs := range gistSnippets {
 		startIndex := gs.Snippet.Start
 		if index == 0 {
+			// append lines all the way up to the start index of the first snippet
 			newLines = append(newLines, lines[:startIndex]...)
+
 		} else {
 			previousGistSnippetEndIndex := gistSnippets[index-1].Snippet.End
 			newLines = append(newLines, lines[previousGistSnippetEndIndex:startIndex]...)
 		}
 	}
 
-	file, err := os.Create("react-testing-medium.md")
+	// append the rest of the lines
+	newLines = append(newLines, lines[gistSnippets[len(gistSnippets)-1].Snippet.End:]...)
+
+	mediumPath := strings.Replace(file.Name, ".md", ".medium.md", 1)
+
+	f, err := os.Create(mediumPath)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer f.Close()
 
-	w := bufio.NewWriter(file)
+	w := bufio.NewWriter(f)
 	if err != nil {
 		log.Fatal(err)
 	}
