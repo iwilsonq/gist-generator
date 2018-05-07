@@ -31,53 +31,83 @@ func getFileString(path string) (string, error) {
 
 // SnippetLines represents the range of lines a code snippet extends
 type SnippetLines struct {
-	Start int
-	End   int
+	Language string
+	Start    int
+	End      int
 }
 
-func getSnippetsFromMarkdownFile(file *File, language string) ([]*Snippet, error) {
+func getLanguage(line string) string {
+
+	languageDelimiter := strings.Split(line, "```")
+	language := ""
+	if len(languageDelimiter) > 1 {
+		language = languageDelimiter[1]
+	}
+	l := Languages[language]
+	if l == "" {
+		log.Fatalf("Error: unsupported language: %v", language)
+	}
+
+	return l
+}
+
+var languages = []string{"javascript", "go"}
+
+func hasLanguageDelimiter(line string) bool {
+	if !strings.Contains(line, "```") {
+		return false
+	}
+
+	for _, lang := range languages {
+		if strings.Contains(line, lang) {
+			return true
+		}
+	}
+	return false
+}
+
+func getSnippetsFromMarkdownFile(file *File) ([]*Snippet, error) {
 	lines := strings.Split(file.Contents, "\n")
 
 	snippetLinesList := []SnippetLines{}
 	start := 0
 	end := 0
 	counting := false
+	language := ""
 
 	for index, line := range lines {
 		lineNumber := index + 1
-		if line == "```javascript" {
+		if hasLanguageDelimiter(line) {
+			language = getLanguage(line)
 			start = lineNumber
 			counting = true
 		}
 
 		if counting && line == "```" {
 			end = lineNumber
-			snippetLinesList = append(snippetLinesList, SnippetLines{Start: start, End: end})
+			snippetLinesList = append(snippetLinesList, SnippetLines{Start: start, End: end, Language: language})
 			counting = false
+			language = ""
 		}
 	}
 
-	languageSeparator := fmt.Sprintf("```%v", language)
-	splitFile := strings.Split(file.Contents, languageSeparator)[1:]
-
-	javascriptSnippets := []*Snippet{}
-	for index, substr := range splitFile {
-		content := strings.Split(substr, "```")[0]
-
+	snippets := []*Snippet{}
+	for _, snip := range snippetLinesList {
+		content := strings.Join(lines[snip.Start:snip.End-1], "\n")
 		content = removeInitialNewline(content)
 		content = replaceTabsWithSpaces(content)
 
 		snippet := &Snippet{
-			Language: language,
 			Content:  content,
 			Filename: file.Name,
-			Start:    snippetLinesList[index].Start,
-			End:      snippetLinesList[index].End,
+			Language: snip.Language,
+			Start:    snip.Start,
+			End:      snip.End,
 		}
-		javascriptSnippets = append(javascriptSnippets, snippet)
+		snippets = append(snippets, snippet)
 	}
 
-	return javascriptSnippets, nil
+	return snippets, nil
 }
 
 // UNICODE characters
@@ -129,8 +159,7 @@ func replaceSnippetsWithURLs(file *File, gistSnippets []*GistSnippet) error {
 
 	// append the rest of the lines
 	newLines = append(newLines, lines[gistSnippets[len(gistSnippets)-1].Snippet.End:]...)
-
-	mediumPath := strings.Replace(file.Name, ".md", ".medium.md", 1)
+	mediumPath := fmt.Sprintf("%s.medium.md", file.Name)
 
 	f, err := os.Create(mediumPath)
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/google/go-github/github"
-
 	"golang.org/x/oauth2"
 )
 
@@ -40,7 +39,6 @@ type File struct {
 
 func main() {
 	path := flag.String("f", "", "specify the path to the markdown file")
-	language := flag.String("lang", "", "specify the language of code snippets in the markdown")
 	accessToken := flag.String("token", "", "the personal access token from your Github account")
 	flag.Parse()
 
@@ -58,7 +56,7 @@ func main() {
 	}
 	file := &File{Name: filename, Contents: fileString}
 
-	snippets, err := getSnippetsFromMarkdownFile(file, *language)
+	snippets, err := getSnippetsFromMarkdownFile(file)
 	if err != nil {
 		panic(err)
 	}

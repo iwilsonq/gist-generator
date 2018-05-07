@@ -19,7 +19,7 @@ func createGist(client *github.Client, snippet *Snippet, index int) (*github.Gis
 	}
 
 	// name vs unnamed type conversion
-	filename := fmt.Sprintf("%v-%v.%v", snippet.Filename, index, Languages[snippet.Language])
+	filename := fmt.Sprintf("%v-%v.%v", snippet.Filename, index, snippet.Language)
 	files[github.GistFilename(filename)] = gf
 
 	gist := github.Gist{
